@@ -9,6 +9,19 @@ jobs:
   # --- STAGE 1: CONTINUOUS INTEGRATION (TESTING) ---
   test:
     runs-on: ubuntu-latest
+    
+    # This block spins up a temporary Redis server for the test!
+    services:
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,10 +38,12 @@ jobs:
 
       - name: Run Tests
         run: pytest
+        env:
+          # Tell the app to look for Redis on localhost during the test
+          REDIS_HOST: localhost 
 
   # --- STAGE 2: CONTINUOUS DEPLOYMENT ---
   deploy:
-    # This is the magic line: Deploy ONLY runs if 'test' passes!
     needs: test 
     runs-on: ubuntu-latest
     steps:

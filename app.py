@@ -1,11 +1,12 @@
-from flask import Flask
-import redis
 import os
+import redis
+from flask import Flask
 
 app = Flask(__name__)
 
-# Connect to Redis. Notice we use 'redis' (the service name), NOT 'localhost'!
-cache = redis.Redis(host='redis', port=6379)
+# This line is crucial: it uses 'localhost' for testing, and 'redis_db' for Docker
+redis_host = os.environ.get('REDIS_HOST', 'redis_db')
+cache = redis.Redis(host=redis_host, port=6379, decode_responses=True)
 
 @app.route('/')
 def hello():
