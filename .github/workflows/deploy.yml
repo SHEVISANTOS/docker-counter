@@ -41,16 +41,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --- NEW STEP: Connect GitHub to your Tailscale Network ---
+      # Connect to Tailscale using OAuth Token
       - name: Connect to Tailscale
         uses: tailscale/github-action@v2
         with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          oauth-client-id: ${{ secrets.TAILSCALE_OAUTH_TOKEN }}
+          tags: tag:ci
 
       - name: Deploy to Server via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 100.122.116.7  # Now using your Tailscale IP!
+          host: 100.122.116.7
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
