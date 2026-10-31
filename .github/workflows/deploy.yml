@@ -6,11 +6,8 @@ on:
       - main
 
 jobs:
-  # --- STAGE 1: CONTINUOUS INTEGRATION (TESTING) ---
   test:
     runs-on: ubuntu-latest
-    
-    # This block spins up a temporary Redis server for the test!
     services:
       redis:
         image: redis:alpine
@@ -21,36 +18,39 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
       - name: Run Tests
         run: pytest
         env:
-          # Tell the app to look for Redis on localhost during the test
           REDIS_HOST: localhost 
 
-  # --- STAGE 2: CONTINUOUS DEPLOYMENT ---
   deploy:
     needs: test 
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # --- NEW STEP: Connect GitHub to your Tailscale Network ---
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+
       - name: Deploy to Server via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.HOST }}
+          host: 100.122.116.7  # Now using your Tailscale IP!
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
