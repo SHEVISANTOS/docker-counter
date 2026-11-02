@@ -50,7 +50,6 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 100.122.116.7
-          port: 2222
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
