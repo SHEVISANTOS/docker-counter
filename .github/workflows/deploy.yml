@@ -39,7 +39,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run Tests
-        run: echo "Tests skipped for rollback demo"
+        run: pytest
         env:
           REDIS_HOST: localhost
 
