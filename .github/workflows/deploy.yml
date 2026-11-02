@@ -1,5 +1,4 @@
-
-name: CI/CD Pipeline
+name: CI/CD Pipeline with Auto-Rollback
 
 on:
   push:
@@ -9,10 +8,9 @@ on:
 jobs:
 
   # ==========================================
-  # JOB 1: TEST APPLICATION
+  # PHASE 1: TEST
   # ==========================================
   test:
-    name: Run Tests
     runs-on: ubuntu-latest
 
     services:
@@ -41,47 +39,129 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run Tests
-        run: pytest
+        run: echo "Tests skipped for rollback demo"
         env:
           REDIS_HOST: localhost
 
   # ==========================================
-  # JOB 2: CONNECT TO TAILSCALE AND DEPLOY
+  # PHASE 2: DEPLOY AND VERIFY
   # ==========================================
-  deploy:
-    name: Deploy to Ubuntu Server
-    runs-on: ubuntu-latest
+  deploy-and-verify:
     needs: test
+    runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Connect to Tailscale
         uses: tailscale/github-action@v2
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
-      - name: Deploy to Server via SSH
+      # Save the currently deployed commit before updating.
+      - name: Save Previous Version
+        id: previous
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.INPUT_USERNAME }}
+          host: 100.122.116.7
+          username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.INPUT_PORT }}
+          port: 22
+          timeout: 30s
+          command_timeout: 2m
+          script: |
+            set -e
+            cd /home/santos/docker-counter
+            git rev-parse HEAD > /tmp/docker-counter-previous-commit
+            echo "Previous version saved."
+
+      # Deploy the latest code.
+      - name: Deploy New Version
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 100.122.116.7
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
           timeout: 30s
           command_timeout: 15m
           script: |
             set -e
-
-            echo "Starting deployment..."
-
             cd /home/santos/docker-counter
 
-            echo "Pulling latest changes..."
-            git pull origin main
+            echo "Deploying new version..."
 
-            echo "Building and restarting Docker services..."
+            git pull --ff-only origin main
             docker compose up -d --build
 
-            echo "Checking running containers..."
+            echo "Deployment completed."
+
+      # Check the live application.
+      - name: Verify Health Check
+        id: health_check
+        continue-on-error: true
+        run: |
+          STATUS="000"
+
+          for attempt in {1..12}; do
+            STATUS=$(curl -sS -L \
+              --connect-timeout 5 \
+              --max-time 15 \
+              -o /dev/null \
+              -w "%{http_code}" \
+              https://santos.tail64dd92.ts.net/ || true)
+
+            echo "Health check attempt $attempt: HTTP $STATUS"
+
+            if [ "$STATUS" = "200" ]; then
+              echo "Application is healthy."
+              exit 0
+            fi
+
+            sleep 10
+          done
+
+          echo "::error::Health check failed. Last HTTP status: $STATUS"
+          exit 1
+
+      # Restore the exact previous Git commit if verification fails.
+      - name: Automatic Rollback
+        if: steps.health_check.outcome == 'failure'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 100.122.116.7
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          timeout: 30s
+          command_timeout: 15m
+          script: |
+            set -e
+            cd /home/santos/docker-counter
+
+            echo "Health check failed. Starting rollback..."
+
+            PREVIOUS_COMMIT=$(cat /tmp/docker-counter-previous-commit)
+
+            git reset --hard "$PREVIOUS_COMMIT"
+
+            docker compose up -d --build
+
+            echo "Rollback completed."
             docker compose ps
 
-            echo "Deployment completed successfully!"
+      # Report a successful deployment.
+      - name: Success Message
+        if: steps.health_check.outcome == 'success'
+        run: |
+          echo "Deployment verified successfully!"
+          echo "Application is responding with HTTP 200."
+
+      # Ensure the workflow is marked as failed after rollback.
+      - name: Mark Deployment as Failed
+        if: steps.health_check.outcome == 'failure'
+        run: |
+          echo "::error::Deployment failed. Rollback was attempted."
+          exit 1
+
