@@ -12,7 +12,7 @@ cache = redis.Redis(host=redis_host, port=6379, decode_responses=True)
 def hello():
     # Increment the counter in Redis
     count = cache.incr('hits')
-    return Hello I Am Cooking Here! This page has been viewed {count} times.\n'
+    return undefined_variable_that_does_not_exist  # This will crash Flask!
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)# Updated via CI/CD Pipeline Mon Nov  2 10:32:19 AM EAT 2026
+    app.run(host="0.0.0.0", port=5000)
